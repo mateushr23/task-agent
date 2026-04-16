@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { TaskStep, TaskStatus } from '@/lib/types';
+import type { TaskStep, TaskStatus, RateLimitInfo } from '@/lib/types';
 import { getSSEUrl } from '@/lib/api';
 
 interface UseSSEReturn {
@@ -9,6 +9,8 @@ interface UseSSEReturn {
   result: string | null;
   error: string | null;
   status: TaskStatus;
+  thinking: string | null;
+  rateLimitInfo: RateLimitInfo | null;
 }
 
 function safeParse(data: string): Record<string, unknown> | null {
@@ -25,6 +27,8 @@ export function useSSE(taskId: string | null): UseSSEReturn {
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<TaskStatus>('idle');
+  const [thinking, setThinking] = useState<string | null>(null);
+  const [rateLimitInfo, setRateLimitInfo] = useState<RateLimitInfo | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const cleanup = useCallback(() => {
@@ -43,6 +47,8 @@ export function useSSE(taskId: string | null): UseSSEReturn {
     setResult(null);
     setError(null);
     setStatus('running');
+    setThinking(null);
+    setRateLimitInfo(null);
 
     const url = getSSEUrl(taskId);
     const es = new EventSource(url);
@@ -66,6 +72,7 @@ export function useSSE(taskId: string | null): UseSSEReturn {
         durationMs: null,
       };
 
+      setThinking(null);
       setSteps((prev) => [...prev, newStep]);
     });
 
@@ -111,9 +118,32 @@ export function useSSE(taskId: string | null): UseSSEReturn {
       );
     });
 
+    es.addEventListener('thinking', (e: MessageEvent) => {
+      const data = safeParse(e.data);
+      if (!data) return;
+      setThinking(String(data.content ?? ''));
+    });
+
+    es.addEventListener('cancelled', () => {
+      setThinking(null);
+      setStatus('cancelled');
+    });
+
+    es.addEventListener('rate_limit', (e: MessageEvent) => {
+      const data = safeParse(e.data);
+      if (!data) return;
+      setThinking(null);
+      setRateLimitInfo({
+        message: String(data.message ?? ''),
+        retryAfter: String(data.retryAfter ?? ''),
+      });
+      setStatus('failed');
+    });
+
     es.addEventListener('result', (e: MessageEvent) => {
       const data = safeParse(e.data) as { content: string } | null;
       if (!data) return;
+      setThinking(null);
       setResult(data.content);
       setStatus('completed');
     });
@@ -144,5 +174,5 @@ export function useSSE(taskId: string | null): UseSSEReturn {
     return cleanup;
   }, [taskId, cleanup]);
 
-  return { steps, result, error, status };
+  return { steps, result, error, status, thinking, rateLimitInfo };
 }

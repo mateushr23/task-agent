@@ -56,6 +56,16 @@ export async function deleteTask(taskId: string): Promise<void> {
   }
 }
 
+export async function cancelTask(taskId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/tasks/${taskId}/cancel`, {
+    method: 'POST',
+  });
+
+  if (!res.ok) {
+    throw new Error('Failed to cancel task');
+  }
+}
+
 export function getSSEUrl(taskId: string): string {
   return `${API_URL}/tasks/${taskId}/stream`;
 }

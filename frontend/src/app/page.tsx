@@ -11,14 +11,20 @@ import HistorySidebar from '@/components/HistorySidebar';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function TaskWorkspace() {
-  const { error, status, retry } = useTask();
+  const { error, status, retry, rateLimitInfo } = useTask();
   const showError = status === 'failed' && error;
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 md:py-8">
       <TaskInput />
 
-      {showError && <ErrorBanner message={error} onRetry={retry} />}
+      {showError && (
+        <ErrorBanner
+          message={error}
+          onRetry={retry}
+          rateLimitInfo={rateLimitInfo}
+        />
+      )}
 
       <StepPanel />
       <ResultPanel />
