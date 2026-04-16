@@ -6,8 +6,9 @@ import { useTask } from '@/contexts/TaskContext';
 const MAX_CHARS = 2000;
 
 export default function TaskInput() {
-  const { submitTask, status } = useTask();
+  const { submitTask, status, cancelCurrentTask } = useTask();
   const [value, setValue] = useState('');
+  const [cancelling, setCancelling] = useState(false);
   const isRunning = status === 'running';
   const overLimit = value.length > MAX_CHARS;
   const canSubmit = value.trim().length > 0 && !isRunning && !overLimit;
@@ -18,6 +19,14 @@ export default function TaskInput() {
     setValue('');
     submitTask(desc);
   }, [canSubmit, value, submitTask]);
+
+  const handleCancel = useCallback(async () => {
+    if (cancelling) return;
+    setCancelling(true);
+    await cancelCurrentTask();
+    // Reset after a brief delay so the button shows "cancelling" state
+    setTimeout(() => setCancelling(false), 1500);
+  }, [cancelling, cancelCurrentTask]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -57,7 +66,17 @@ export default function TaskInput() {
         </span>
       </div>
 
-      <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex justify-end gap-2">
+        {isRunning && (
+          <button
+            type="button"
+            onClick={handleCancel}
+            disabled={cancelling}
+            className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-red-300 px-5 py-3 text-sm font-medium text-red-600 transition-all duration-150 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-300 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {cancelling ? 'Cancelando...' : 'Cancelar'}
+          </button>
+        )}
         <button
           type="button"
           onClick={handleSubmit}

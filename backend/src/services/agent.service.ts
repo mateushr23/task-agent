@@ -30,7 +30,8 @@ IMPORTANT: Always use the provided function tools to search and gather data. Nev
 export async function executeAgentLoop(
   taskId: string,
   description: string,
-  sseEmitter: SSEEmitter
+  sseEmitter: SSEEmitter,
+  signal?: AbortSignal
 ): Promise<void> {
   const messages: Groq.Chat.ChatCompletionMessageParam[] = [
     { role: "system", content: SYSTEM_PROMPT },
@@ -41,11 +42,24 @@ export async function executeAgentLoop(
 
   try {
     for (let i = 0; i < MAX_ITERATIONS; i++) {
-      const response = await chatCompletion(messages, TOOL_DEFINITIONS);
+      // Check if task was cancelled before each iteration
+      if (signal?.aborted) {
+        sseEmitter.emit("cancelled", {});
+        await updateTaskStatus(taskId, "failed", undefined, "Cancelled by user");
+        sseEmitter.emit("done", {});
+        return;
+      }
+
+      const response = await chatCompletion(messages, TOOL_DEFINITIONS, signal);
       const choice = response.choices[0];
 
       if (!choice) {
         throw new Error("No response choices from Groq");
+      }
+
+      // Stream agent thinking when there's both content and tool_calls
+      if (choice.message.content && choice.message.tool_calls?.length) {
+        sseEmitter.emit("thinking", { content: choice.message.content });
       }
 
       // If no tool calls -> final response
@@ -65,6 +79,14 @@ export async function executeAgentLoop(
 
       // Execute each tool call
       for (const toolCall of choice.message.tool_calls) {
+        // Check if task was cancelled before each tool call
+        if (signal?.aborted) {
+          sseEmitter.emit("cancelled", {});
+          await updateTaskStatus(taskId, "failed", undefined, "Cancelled by user");
+          sseEmitter.emit("done", {});
+          return;
+        }
+
         stepIndex++;
         const { name, arguments: argsStr } = toolCall.function;
         let args: Record<string, unknown>;
@@ -132,8 +154,19 @@ export async function executeAgentLoop(
   } catch (error: unknown) {
     const errorMsg =
       error instanceof Error ? error.message : "Unknown agent error";
+    const errorCode = (error as Record<string, unknown>)?.code || "UNKNOWN";
+
     logger.error({ err: error, taskId }, "Agent loop fatal error");
-    sseEmitter.emit("error", { message: errorMsg });
+
+    if (errorCode === "RATE_LIMIT") {
+      sseEmitter.emit("rate_limit", {
+        message: errorMsg,
+        retryAfter: (error as Record<string, unknown>)?.retryAfter || "",
+      });
+    } else {
+      sseEmitter.emit("error", { message: errorMsg });
+    }
+
     try {
       await updateTaskStatus(taskId, "failed", undefined, errorMsg);
     } catch (dbErr) {

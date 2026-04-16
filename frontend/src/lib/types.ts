@@ -29,4 +29,9 @@ export interface TaskStep {
   durationMs: number | null;
 }
 
-export type TaskStatus = 'idle' | 'running' | 'completed' | 'failed';
+export type TaskStatus = 'idle' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface RateLimitInfo {
+  message: string;
+  retryAfter: string;
+}

@@ -80,7 +80,8 @@ const BASE_DELAY_MS = 1000;
  */
 export async function chatCompletion(
   messages: Groq.Chat.ChatCompletionMessageParam[],
-  tools: ToolDefinition[]
+  tools: ToolDefinition[],
+  signal?: AbortSignal
 ): Promise<Groq.Chat.ChatCompletion> {
   let temperature = 0.3;
   let toolUseRetried = false;
@@ -95,7 +96,7 @@ export async function chatCompletion(
         parallel_tool_calls: tools.length > 0 ? false : undefined,
         temperature,
         max_tokens: 4096,
-      });
+      }, { signal });
       return response;
     } catch (err: unknown) {
       const isRateLimit =
@@ -128,6 +129,24 @@ export async function chatCompletion(
         await new Promise((resolve) => setTimeout(resolve, delay));
         continue;
       }
+
+      // All retries exhausted for rate limit — throw a friendly error
+      if (isRateLimit) {
+        let retryAfter = "";
+        if (err instanceof Error && "headers" in err) {
+          const headers = (err as unknown as { headers?: Record<string, string> }).headers;
+          retryAfter = headers?.["retry-after"] || "";
+        }
+        // Also try to parse from error message
+        const match = err instanceof Error ? err.message.match(/try again in (\d+m[\d.]+s|\d+[\d.]+s)/i) : null;
+        if (match) retryAfter = match[1];
+
+        const error = new Error(`Rate limit exceeded${retryAfter ? `. Try again in ${retryAfter}` : ""}`);
+        (error as unknown as Record<string, unknown>).code = "RATE_LIMIT";
+        (error as unknown as Record<string, unknown>).retryAfter = retryAfter;
+        throw error;
+      }
+
       throw err;
     }
   }

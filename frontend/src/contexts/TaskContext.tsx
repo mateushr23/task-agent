@@ -8,9 +8,9 @@ import {
   useEffect,
   type ReactNode,
 } from 'react';
-import type { TaskStep, TaskStatus, TaskSummary } from '@/lib/types';
+import type { TaskStep, TaskStatus, TaskSummary, RateLimitInfo } from '@/lib/types';
 import { useSSE } from '@/hooks/useSSE';
-import { createTask, fetchTasks, fetchTaskDetail, deleteTask } from '@/lib/api';
+import { createTask, fetchTasks, fetchTaskDetail, deleteTask, cancelTask } from '@/lib/api';
 
 interface TaskContextValue {
   /* Current task */
@@ -20,6 +20,8 @@ interface TaskContextValue {
   steps: TaskStep[];
   result: string | null;
   error: string | null;
+  thinking: string | null;
+  rateLimitInfo: RateLimitInfo | null;
 
   /* History */
   history: TaskSummary[];
@@ -32,6 +34,7 @@ interface TaskContextValue {
   clearCurrent: () => void;
   removeFromHistory: (taskId: string) => Promise<void>;
   refreshHistory: () => Promise<void>;
+  cancelCurrentTask: () => Promise<void>;
 }
 
 const TaskContext = createContext<TaskContextValue | null>(null);
@@ -67,6 +70,8 @@ export function TaskProvider({ children }: { children: ReactNode }) {
   const steps = loadedSteps ?? sse.steps;
   const result = loadedResult ?? sse.result;
   const error = loadedError ?? sse.error;
+  const thinking = sse.thinking;
+  const rateLimitInfo = sse.rateLimitInfo;
 
   /* Fetch history on mount */
   const refreshHistory = useCallback(async () => {
@@ -87,10 +92,19 @@ export function TaskProvider({ children }: { children: ReactNode }) {
 
   /* Refresh history when a live task completes */
   useEffect(() => {
-    if (sse.status === 'completed' || sse.status === 'failed') {
+    if (sse.status === 'completed' || sse.status === 'failed' || sse.status === 'cancelled') {
       refreshHistory();
     }
   }, [sse.status, refreshHistory]);
+
+  const cancelCurrentTask = useCallback(async () => {
+    if (!taskId || status !== 'running') return;
+    try {
+      await cancelTask(taskId);
+    } catch (err) {
+      console.warn('Failed to cancel task:', err);
+    }
+  }, [taskId, status]);
 
   const submitTask = useCallback(
     async (desc: string) => {
@@ -173,6 +187,8 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         steps,
         result,
         error,
+        thinking,
+        rateLimitInfo,
         history,
         historyLoading,
         submitTask,
@@ -181,6 +197,7 @@ export function TaskProvider({ children }: { children: ReactNode }) {
         clearCurrent,
         removeFromHistory,
         refreshHistory,
+        cancelCurrentTask,
       }}
     >
       {children}
