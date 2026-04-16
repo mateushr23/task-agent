@@ -85,7 +85,3 @@ User → Next.js UI → Express API → Groq (LLM) → Tools → SSE → UI
 ```
 
 The agent loop: user sends a task → LLM decides which tools to call → backend executes tools → results sent back to LLM → repeat until done → final result streamed to frontend via SSE.
-
-## License
-
-MIT
