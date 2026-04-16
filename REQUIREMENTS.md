@@ -247,7 +247,6 @@ Stages 2 and 3 can run in parallel.
 PORT=3001
 GROQ_API_KEY=gsk_...
 GROQ_MODEL=llama-3.3-70b-versatile
-SERPAPI_KEY=...
 DATABASE_URL=postgresql://taskagent:taskagent@localhost:5432/taskagent
 FRONTEND_URL=http://localhost:3000
 NODE_ENV=development
